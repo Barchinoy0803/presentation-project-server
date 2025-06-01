@@ -5,6 +5,8 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
   WebSocketServer,
+  ConnectedSocket,
+  WsException,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
@@ -27,23 +29,29 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('join-presentation')
   async joinPresentation(
-    @MessageBody() data: { user: { id: string; nickname: string }; presentationId: string },
+    @MessageBody() data: { user: { id: string; nickname: string; role: string; presentationId: string }, presentationId: string },
+    @ConnectedSocket() client: Socket,
   ) {
     const { user, presentationId } = data;
+    console.log(
+      user, presentationId
+    );
+    
 
-    // Qidirilayotgan presentation
+    if (!presentationId) {
+      throw new WsException('presentationId is required');
+    }
+
     let presentation = await this.prisma.presentation.findUnique({
       where: { id: presentationId },
       include: {
         users: true,
-        slides: {
-          include: { blocks: true },
-        },
+        slides: { include: { blocks: true } },
       },
     });
 
-    // Agar presentation topilmasa — yaratish
     if (!presentation) {
+      
       presentation = await this.prisma.presentation.create({
         data: {
           id: presentationId,
@@ -59,23 +67,17 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             create: {
               id: uuidv4(),
               title: 'First Slide',
-              blocks: {
-                create: [],
-              },
+              blocks: { create: [] },
             },
           },
         },
         include: {
           users: true,
-          slides: {
-            include: { blocks: true },
-          },
+          slides: { include: { blocks: true } },
         },
       });
     } else {
-      // Foydalanuvchi allaqachon ulanganmi, yo‘qmi
       const existingUser = presentation.users.find((u) => u.id === user.id);
-
       if (!existingUser) {
         await this.prisma.user.create({
           data: {
@@ -85,37 +87,27 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             presentationId: presentation.id,
           },
         });
-
-        // Yangilangan presentation-ni qayta olish
         presentation = await this.prisma.presentation.findUnique({
           where: { id: presentationId },
           include: {
             users: true,
-            slides: {
-              include: { blocks: true },
-            },
+            slides: { include: { blocks: true } },
           },
         });
       }
     }
 
-    // Foydalanuvchini socket room-ga qo‘shish
-    const sockets = await this.server.fetchSockets();
-    const clientSocket = sockets.find((s) => s.handshake.auth.userId === user.id);
-    if (clientSocket) {
-      clientSocket.join(presentationId);
-    }
-
+    client.join(presentationId);
     this.server.to(presentationId).emit('presentation-data', presentation);
   }
 
-  @SubscribeMessage('update-presentation')
+  @SubscribeMessage('presentation-update')
   async updatePresentation(@MessageBody() presentation: any) {
     await this.prisma.presentation.update({
       where: { id: presentation.id },
       data: {
         slides: {
-          deleteMany: {}, // eski slaydlarni o‘chiradi
+          deleteMany: {},
           create: presentation.slides.map((slide) => ({
             id: slide.id,
             title: slide.title,
@@ -139,7 +131,8 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('change-user-role')
   async changeUserRole(
-    @MessageBody() data: {
+    @MessageBody()
+    data: {
       userId: string;
       newRole: Role;
       presentationId: string;

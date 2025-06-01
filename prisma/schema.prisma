@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Presentation {
+  id        String  @id @default(uuid())
+  creatorId String
+  users     User[]
+  slides    Slide[]
+}
+
+model User {
+  id             String       @id @default(uuid())
+  nickname       String       @unique
+  role           Role
+  presentationId String
+  presentation   Presentation @relation(fields: [presentationId], references: [id])
+}
+
+model Slide {
+  id             String       @id @default(uuid())
+  title          String
+  presentationId String
+  presentation   Presentation @relation(fields: [presentationId], references: [id])
+  blocks         TextBlock[]
+}
+
+model TextBlock {
+  id      String @id @default(uuid())
+  content String
+  x       Float
+  y       Float
+  slideId String
+  slide   Slide  @relation(fields: [slideId], references: [id])
+}
+
+enum Role {
+  CREATER
+  EDITOR
+  VIEWER
+}

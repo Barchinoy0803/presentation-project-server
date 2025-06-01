@@ -10,6 +10,7 @@ datasource db {
 
 model Presentation {
   id        String  @id @default(uuid())
+  title     String
   creatorId String
   users     User[]
   slides    Slide[]

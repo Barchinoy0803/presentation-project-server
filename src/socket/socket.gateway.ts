@@ -39,7 +39,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const { user, presentationId, title } = data;
     
     console.log(presentationId);
-    // if (!presentationId) throw new WsException('PresentationId is required');
 
     let presentation = await this.prisma.presentation.findUnique({
       where: { id: presentationId ?? '0'},
@@ -49,23 +48,19 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       },
     });
 
-    // 1. Foydalanuvchi mavjudligini tekshiramiz
     let existingUser = await this.prisma.user.findUnique({
       where: { nickname: user.nickname },
     });
 
-    // 2. Agar mavjud bo'lmasa, yaratamiz
     if (!existingUser) {
       existingUser = await this.prisma.user.create({
         data: {
           id: user.id,
           nickname: user.nickname,
-          role: Role.VIEWER, // default rol
+          role: Role.VIEWER, 
         },
       });
     }
-
-    // 3. Agar presentation mavjud bo'lmasa, uni yaratamiz
     
     if (!presentation) {
       

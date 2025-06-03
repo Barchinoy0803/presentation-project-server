@@ -29,39 +29,52 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('join-presentation')
   async joinPresentation(
-    @MessageBody() data: { user: { id: string; nickname: string; role: string; presentationId: string }, presentationId: string },
+    @MessageBody() data: {
+      user: { id: string; nickname: string; role: string; presentationId: string };
+      presentationId: string;
+      title: string;
+    },
     @ConnectedSocket() client: Socket,
   ) {
-    const { user, presentationId } = data;
-    console.log(
-      user, presentationId
-    );
+    const { user, presentationId, title } = data;
     
-
-    if (!presentationId) {
-      throw new WsException('presentationId is required');
-    }
+    console.log(presentationId);
+    // if (!presentationId) throw new WsException('PresentationId is required');
 
     let presentation = await this.prisma.presentation.findUnique({
-      where: { id: presentationId },
+      where: { id: presentationId ?? '0'},
       include: {
         users: true,
         slides: { include: { blocks: true } },
       },
     });
 
+    // 1. Foydalanuvchi mavjudligini tekshiramiz
+    let existingUser = await this.prisma.user.findUnique({
+      where: { nickname: user.nickname },
+    });
+
+    // 2. Agar mavjud bo'lmasa, yaratamiz
+    if (!existingUser) {
+      existingUser = await this.prisma.user.create({
+        data: {
+          id: user.id,
+          nickname: user.nickname,
+          role: Role.VIEWER, // default rol
+        },
+      });
+    }
+
+    // 3. Agar presentation mavjud bo'lmasa, uni yaratamiz
+    
     if (!presentation) {
       
       presentation = await this.prisma.presentation.create({
         data: {
-          id: presentationId,
-          creatorId: user.id,
+          creatorId: existingUser.id,
+          title,
           users: {
-            create: {
-              id: user.id,
-              nickname: user.nickname,
-              role: Role.CREATER,
-            },
+            connect: { id: existingUser.id },
           },
           slides: {
             create: {
@@ -77,16 +90,20 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         },
       });
     } else {
-      const existingUser = presentation.users.find((u) => u.id === user.id);
-      if (!existingUser) {
-        await this.prisma.user.create({
+      const isAlreadyConnected = presentation.users.some(
+        (u) => u.id === existingUser.id,
+      );
+
+      if (!isAlreadyConnected) {
+        await this.prisma.user.update({
+          where: { id: existingUser.id },
           data: {
-            id: user.id,
-            nickname: user.nickname,
-            role: Role.VIEWER,
-            presentationId: presentation.id,
+            presentations: {
+              connect: { id: presentation.id },
+            },
           },
         });
+
         presentation = await this.prisma.presentation.findUnique({
           where: { id: presentationId },
           include: {
@@ -103,28 +120,28 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('presentation-update')
   async updatePresentation(@MessageBody() presentation: any) {
-    await this.prisma.presentation.update({
-      where: { id: presentation.id },
-      data: {
-        slides: {
-          deleteMany: {},
-          create: presentation.slides.map((slide) => ({
-            id: slide.id,
-            title: slide.title,
-            presentationId: presentation.id,
-            blocks: {
-              create: slide.blocks.map((block) => ({
-                id: block.id,
-                content: block.content,
-                x: block.x,
-                y: block.y,
-                slideId: slide.id,
-              })),
-            },
-          })),
-        },
-      },
+    await this.prisma.slide.deleteMany({
+      where: { presentationId: presentation.id },
     });
+
+    for (const slide of presentation.slides) {
+      await this.prisma.slide.create({
+        data: {
+          id: slide.id,
+          title: slide.title,
+          presentationId: presentation.id,
+          blocks: {
+            create: slide.blocks.map((block) => ({
+              id: block.id,
+              content: block.content,
+              x: block.x,
+              y: block.y,
+              slideId: slide.id,
+            })),
+          },
+        },
+      });
+    }
 
     this.server.to(presentation.id).emit('presentation-update', presentation);
   }

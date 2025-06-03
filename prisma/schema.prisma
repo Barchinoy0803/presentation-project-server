@@ -10,18 +10,19 @@ datasource db {
 
 model Presentation {
   id        String  @id @default(uuid())
-  title     String
+  title     String  @default("")
   creatorId String
-  users     User[]
+  creator   User    @relation(name: "CreatedPresentations", fields: [creatorId], references: [id])
+  users     User[]  @relation(name: "UserPresentations")
   slides    Slide[]
 }
 
 model User {
-  id             String       @id @default(uuid())
-  nickname       String       @unique
-  role           Role
-  presentationId String
-  presentation   Presentation @relation(fields: [presentationId], references: [id])
+  id            String         @id @default(uuid())
+  nickname      String         @unique
+  role          Role
+  created       Presentation[] @relation(name: "CreatedPresentations")
+  presentations Presentation[] @relation(name: "UserPresentations")
 }
 
 model Slide {

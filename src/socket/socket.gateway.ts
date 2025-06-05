@@ -6,12 +6,11 @@ import {
   OnGatewayDisconnect,
   WebSocketServer,
   ConnectedSocket,
-  WsException,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
-import { v4 as uuidv4 } from 'uuid';
 import { Role } from 'generated/prisma';
+import { v4 as uuidv4 } from 'uuid';
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -29,88 +28,76 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('join-presentation')
   async joinPresentation(
-    @MessageBody() data: {
-      user: { id: string; nickname: string; role: string; presentationId: string };
+    @MessageBody()
+    data: {
+      nickname: string;
       presentationId: string;
-      title: string;
     },
     @ConnectedSocket() client: Socket,
   ) {
-    const { user, presentationId, title } = data;
-    
-    console.log(presentationId);
+    const { nickname, presentationId } = data;
 
-    let presentation = await this.prisma.presentation.findUnique({
-      where: { id: presentationId ?? '0'},
+    const presentation = await this.prisma.presentation.findUnique({
+      where: { id: presentationId },
       include: {
         users: true,
         slides: { include: { blocks: true } },
       },
     });
 
+    if (!presentation) {
+      client.emit('error', 'Presentation not found');
+      return;
+    }
+
     let existingUser = await this.prisma.user.findUnique({
-      where: { nickname: user.nickname },
+      where: { nickname },
     });
 
     if (!existingUser) {
       existingUser = await this.prisma.user.create({
         data: {
-          id: user.id,
-          nickname: user.nickname,
-          role: Role.VIEWER, 
+          id: uuidv4(),
+          nickname,
+          role:
+            nickname === presentation.creatorId
+              ? Role.CREATOR
+              : Role.VIEWER,
         },
       });
     }
-    
-    if (!presentation) {
-      
-      presentation = await this.prisma.presentation.create({
+
+    const isAlreadyConnected = presentation.users.some(
+      (u) => u.id === existingUser.id,
+    );
+
+    if (!isAlreadyConnected) {
+      await this.prisma.user.update({
+        where: { id: existingUser.id },
         data: {
-          creatorId: existingUser.id,
-          title,
-          users: {
-            connect: { id: existingUser.id },
+          presentations: {
+            connect: { id: presentation.id },
           },
-          slides: {
-            create: {
-              id: uuidv4(),
-              title: 'First Slide',
-              blocks: { create: [] },
-            },
-          },
-        },
-        include: {
-          users: true,
-          slides: { include: { blocks: true } },
+          role:
+            nickname === presentation.creatorId
+              ? Role.CREATOR
+              : Role.VIEWER,
         },
       });
-    } else {
-      const isAlreadyConnected = presentation.users.some(
-        (u) => u.id === existingUser.id,
-      );
-
-      if (!isAlreadyConnected) {
-        await this.prisma.user.update({
-          where: { id: existingUser.id },
-          data: {
-            presentations: {
-              connect: { id: presentation.id },
-            },
-          },
-        });
-
-        presentation = await this.prisma.presentation.findUnique({
-          where: { id: presentationId },
-          include: {
-            users: true,
-            slides: { include: { blocks: true } },
-          },
-        });
-      }
     }
+
+    const updatedPresentation = await this.prisma.presentation.findUnique({
+      where: { id: presentationId },
+      include: {
+        users: true,
+        slides: { include: { blocks: true } },
+      },
+    });
 
     client.join(presentationId);
-    this.server.to(presentationId).emit('presentation-data', presentation);
+    this.server
+      .to(presentationId)
+      .emit('presentation-data', updatedPresentation);
   }
 
   @SubscribeMessage('presentation-update')

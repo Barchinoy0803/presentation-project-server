@@ -7,9 +7,15 @@ import { UpdatePresentationDto } from './dto/update-presentation.dto';
 export class PresentationController {
   constructor(private readonly presentationService: PresentationService) {}
 
-  @Post()
-  create(@Body() createPresentationDto: CreatePresentationDto) {
-    return this.presentationService.create(createPresentationDto);
+  @Post('create')
+  async createPresentation(
+    @Body() data: { username: string; title: string }
+  ) {
+    const presentation = await this.presentationService.createPresentation(
+      data.username,
+      data.title
+    );
+    return { presentationId: presentation.id };
   }
 
   @Get()

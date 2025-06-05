@@ -43,7 +43,7 @@ model TextBlock {
 }
 
 enum Role {
-  CREATER
+  CREATOR
   EDITOR
   VIEWER
 }

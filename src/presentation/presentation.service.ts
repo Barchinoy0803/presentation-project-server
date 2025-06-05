@@ -1,29 +1,63 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { CreatePresentationDto } from './dto/create-presentation.dto';
 import { UpdatePresentationDto } from './dto/update-presentation.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { Role } from 'generated/prisma';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class PresentationService {
-  constructor(
-    private readonly prisma: PrismaService
-  ) { }
+  constructor(private readonly prisma: PrismaService) {}
 
-  create(createPresentationDto: CreatePresentationDto) {
-    return 'This action adds a new presentation';
+  async createPresentation(username: string, title: string) {
+    let creator = await this.prisma.user.findUnique({
+      where: { nickname: username },
+    });
+
+    if (!creator) {
+      creator = await this.prisma.user.create({
+        data: {
+          id: uuidv4(),
+          nickname: username,
+          role: Role.CREATOR,
+        },
+      });
+    }
+
+    const presentation = await this.prisma.presentation.create({
+      data: {
+        title,
+        creatorId: creator.id,
+        users: {
+          connect: { id: creator.id },
+        },
+        slides: {
+          create: {
+            id: uuidv4(),
+            title: 'First Slide',
+            blocks: { create: [] },
+          },
+        },
+      },
+      include: {
+        users: true,
+        slides: { include: { blocks: true } },
+      },
+    });
+
+    return presentation;
   }
-
 
   async findAll() {
     try {
       let presentations = await this.prisma.presentation.findMany({
         include: {
           slides: true,
-          users: true
-        }
-      })
-      if (!presentations) throw new NotFoundException("Not found presentation!")
-      return presentations
+          users: true,
+        },
+      });
+      if (!presentations)
+        throw new NotFoundException('Not found presentation!');
+      return presentations;
     } catch (error) {
       console.log(error);
     }

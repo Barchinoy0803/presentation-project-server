@@ -28,21 +28,14 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('join-presentation')
   async joinPresentation(
-    @MessageBody()
-    data: {
-      nickname: string;
-      presentationId: string;
-    },
+    @MessageBody() data: { nickname: string; presentationId: string },
     @ConnectedSocket() client: Socket,
   ) {
     const { nickname, presentationId } = data;
 
     const presentation = await this.prisma.presentation.findUnique({
       where: { id: presentationId },
-      include: {
-        users: true,
-        slides: { include: { blocks: true } },
-      },
+      include: { users: true, slides: { include: { blocks: true } } },
     });
 
     if (!presentation) {
@@ -50,92 +43,117 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    let existingUser = await this.prisma.user.findUnique({
-      where: { nickname },
-    });
+    let user = await this.prisma.user.findUnique({ where: { nickname } });
 
-    if (!existingUser) {
-      existingUser = await this.prisma.user.create({
+    if (!user) {
+      user = await this.prisma.user.create({
         data: {
           id: uuidv4(),
           nickname,
-          role:
-            nickname === presentation.creatorId
-              ? Role.CREATOR
-              : Role.VIEWER,
+          role: nickname === presentation.creatorId ? Role.CREATOR : Role.VIEWER,
         },
       });
     }
 
-    const isAlreadyConnected = presentation.users.some(
-      (u) => u.id === existingUser.id,
-    );
+    const isConnected = presentation.users.some((u) => u.id === user.id);
 
-    if (!isAlreadyConnected) {
+    if (!isConnected) {
       await this.prisma.user.update({
-        where: { id: existingUser.id },
+        where: { id: user.id },
         data: {
-          presentations: {
-            connect: { id: presentation.id },
-          },
-          role:
-            nickname === presentation.creatorId
-              ? Role.CREATOR
-              : Role.VIEWER,
+          presentations: { connect: { id: presentationId } },
+          role: nickname === presentation.creatorId ? Role.CREATOR : Role.VIEWER,
         },
       });
     }
 
     const updatedPresentation = await this.prisma.presentation.findUnique({
       where: { id: presentationId },
-      include: {
-        users: true,
-        slides: { include: { blocks: true } },
-      },
+      include: { users: true, slides: { include: { blocks: true } } },
     });
 
     client.join(presentationId);
-    this.server
-      .to(presentationId)
-      .emit('presentation-data', updatedPresentation);
+    this.server.to(presentationId).emit('presentation-data', updatedPresentation);
   }
 
-  @SubscribeMessage('presentation-update')
-  async updatePresentation(@MessageBody() presentation: any) {
-    await this.prisma.slide.deleteMany({
-      where: { presentationId: presentation.id },
+  @SubscribeMessage('add-slide')
+  async addSlide(
+    @MessageBody()
+    data: { presentationId: string; slide: { id: string; title: string; blocks: any[] } },
+  ) {
+    await this.prisma.slide.create({
+      data: {
+        id: data.slide.id,
+        title: data.slide.title,
+        presentationId: data.presentationId,
+        blocks: {
+          create: data.slide.blocks.map((b) => ({
+            id: b.id,
+            content: b.content,
+            x: b.x,
+            y: b.y,
+          })),
+        },
+      },
     });
 
-    for (const slide of presentation.slides) {
-      await this.prisma.slide.create({
-        data: {
-          id: slide.id,
-          title: slide.title,
-          presentationId: presentation.id,
-          blocks: {
-            create: slide.blocks.map((block) => ({
-              id: block.id,
-              content: block.content,
-              x: block.x,
-              y: block.y,
-              slideId: slide.id,
-            })),
-          },
-        },
-      });
-    }
+    const updatedPresentation = await this.prisma.presentation.findUnique({
+      where: { id: data.presentationId },
+      include: { users: true, slides: { include: { blocks: true } } },
+    });
 
-    this.server.to(presentation.id).emit('presentation-update', presentation);
+    this.server.to(data.presentationId).emit('presentation-update', updatedPresentation);
+  }
+
+  @SubscribeMessage('update-slide')
+  async updateSlide(
+    @MessageBody()
+    data: { presentationId: string; slide: { id: string; title: string; blocks: any[] } },
+  ) {
+    await this.prisma.textBlock.deleteMany({
+      where: { slideId: data.slide.id },
+    });
+
+    await this.prisma.slide.update({
+      where: { id: data.slide.id },
+      data: {
+        title: data.slide.title,
+        blocks: {
+          create: data.slide.blocks.map((b) => ({
+            id: b.id,
+            content: b.content,
+            x: b.x,
+            y: b.y,
+          })),
+        },
+      },
+    });
+
+    const updatedPresentation = await this.prisma.presentation.findUnique({
+      where: { id: data.presentationId },
+      include: { users: true, slides: { include: { blocks: true } } },
+    });
+
+    this.server.to(data.presentationId).emit('presentation-update', updatedPresentation);
+  }
+
+  @SubscribeMessage('remove-slide')
+  async removeSlide(
+    @MessageBody() data: { presentationId: string; slideId: string },
+  ) {
+    await this.prisma.slide.delete({ where: { id: data.slideId } });
+
+    const updatedPresentation = await this.prisma.presentation.findUnique({
+      where: { id: data.presentationId },
+      include: { users: true, slides: { include: { blocks: true } } },
+    });
+
+    this.server.to(data.presentationId).emit('presentation-update', updatedPresentation);
   }
 
   @SubscribeMessage('change-user-role')
   async changeUserRole(
-    @MessageBody()
-    data: {
-      userId: string;
-      newRole: Role;
-      presentationId: string;
-    },
+    @MessageBody() data: { userId: string; newRole: Role; presentationId: string },
   ) {
     await this.prisma.user.update({
       where: { id: data.userId },

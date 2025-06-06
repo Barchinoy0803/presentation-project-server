@@ -27,6 +27,7 @@ export class PresentationService {
       data: {
         title,
         creatorId: creator.id,
+        creatorName: creator.nickname,
         users: {
           connect: { id: creator.id },
         },
@@ -53,6 +54,7 @@ export class PresentationService {
         include: {
           slides: true,
           users: true,
+          creator: true,
         },
       });
       if (!presentations)

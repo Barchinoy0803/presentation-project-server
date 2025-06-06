@@ -134,7 +134,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         },
       });
 
-      // Broadcast to all except sender
       client.to(presentationId).emit('block-updated', { slideId, block });
     } catch (error) {
       client.emit('error', 'Failed to update block');
@@ -210,6 +209,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
+      console.log(newRole)
       const updatedUser = await this.prisma.user.update({
         where: { id: userId },
         data: { role: newRole },

@@ -13,6 +13,7 @@ model Presentation {
   title     String  @default("")
   creatorId String
   creator   User    @relation(name: "CreatedPresentations", fields: [creatorId], references: [id])
+  creatorName String @default("")
   users     User[]  @relation(name: "UserPresentations")
   slides    Slide[]
 }

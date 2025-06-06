@@ -30,7 +30,7 @@ model Slide {
   title          String
   presentationId String
   presentation   Presentation @relation(fields: [presentationId], references: [id])
-  blocks         TextBlock[]
+  blocks         TextBlock[] @relation("SlideToTextBlock")
 }
 
 model TextBlock {
@@ -39,7 +39,7 @@ model TextBlock {
   x       Float
   y       Float
   slideId String
-  slide   Slide  @relation(fields: [slideId], references: [id])
+  slide   Slide  @relation("SlideToTextBlock", fields: [slideId], references: [id], onDelete: Cascade)
 }
 
 enum Role {

@@ -16,15 +16,23 @@ import { v4 as uuidv4 } from 'uuid';
 export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private connectedClients = new Map<string, Socket>();
+  private userPresentationMap = new Map<string, string>()
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   handleConnection(client: Socket) {
     this.connectedClients.set(client.id, client);
   }
 
   handleDisconnect(client: Socket) {
+    const presentationId = this.userPresentationMap.get(client.id)
+    if (presentationId) {
+      this.server.to(presentationId).emit("user-left", {
+        clientId: client.id
+      })
+    }
     this.connectedClients.delete(client.id);
+    this.userPresentationMap.delete(client.id)
   }
 
   @SubscribeMessage('join-presentation')
@@ -85,13 +93,22 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
       }
 
+      this.userPresentationMap.set(client.id, presentationId)
+      const updatedPresentation = await this.prisma.presentation.findUnique({
+        where: { id: presentationId },
+        include:
+        {
+          users: true,
+          slides: {
+            include: {
+              blocks: true
+            }
+          }
+        }
+      })
+
       client.join(presentationId);
-      client.emit('presentation-data', {
-        ...presentation,
-        users: [...presentation.users, user].filter(
-          (u, i, arr) => arr.findIndex((u2) => u2.id === u.id) === i,
-        ),
-      });
+      client.emit('presentation-data', updatedPresentation);
     } catch (error) {
       client.emit('error', 'Failed to join presentation');
       console.error('Join presentation error:', error);

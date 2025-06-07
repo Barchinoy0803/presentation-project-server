@@ -109,6 +109,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       client.join(presentationId);
       client.emit('presentation-data', updatedPresentation);
+      this.server.to(presentationId).emit("presentation-data", updatedPresentation)
     } catch (error) {
       client.emit('error', 'Failed to join presentation');
       console.error('Join presentation error:', error);

@@ -9,7 +9,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service';
-import { Role } from 'generated/prisma';
+import { Role } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 
 @WebSocketGateway({ cors: { origin: '*' } })

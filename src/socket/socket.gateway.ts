@@ -16,23 +16,23 @@ import { v4 as uuidv4 } from 'uuid';
 export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
   private connectedClients = new Map<string, Socket>();
-  private userPresentationMap = new Map<string, string>()
+  private userPresentationMap = new Map<string, string>();
 
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
   handleConnection(client: Socket) {
     this.connectedClients.set(client.id, client);
   }
 
   handleDisconnect(client: Socket) {
-    const presentationId = this.userPresentationMap.get(client.id)
+    const presentationId = this.userPresentationMap.get(client.id);
     if (presentationId) {
-      this.server.to(presentationId).emit("user-left", {
-        clientId: client.id
-      })
+      this.server.to(presentationId).emit('user-left', {
+        clientId: client.id,
+      });
     }
     this.connectedClients.delete(client.id);
-    this.userPresentationMap.delete(client.id)
+    this.userPresentationMap.delete(client.id);
   }
 
   @SubscribeMessage('join-presentation')
@@ -93,39 +93,38 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         });
       }
 
-      this.userPresentationMap.set(client.id, presentationId)
+      this.userPresentationMap.set(client.id, presentationId);
       const updatedPresentation = await this.prisma.presentation.findUnique({
         where: { id: presentationId },
-        include:
-        {
+        include: {
           users: true,
           slides: {
             include: {
-              blocks: true
-            }
-          }
-        }
-      })
+              blocks: true,
+            },
+          },
+        },
+      });
 
       client.join(presentationId);
       client.emit('presentation-data', updatedPresentation);
-      this.server.to(presentationId).emit("presentation-data", updatedPresentation)
+      this.server.to(presentationId).emit('presentation-data', updatedPresentation);
     } catch (error) {
       client.emit('error', 'Failed to join presentation');
-      console.error('Join presentation error:', error);
     }
   }
 
   @SubscribeMessage('add-slide')
   async addSlide(
-    @MessageBody() { presentationId, slide },
+    @MessageBody() { presentationId },
     @ConnectedSocket() client: Socket,
   ) {
     try {
       const newSlide = await this.prisma.slide.create({
         data: {
-          id: slide.id,
-          title: slide.title,
+          id: uuidv4(),
+          title: 'New Slide',
+          order: 0,
           presentationId,
         },
       });
@@ -133,7 +132,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.server.to(presentationId).emit('slide-added', newSlide);
     } catch (error) {
       client.emit('error', 'Failed to add slide');
-      console.error('Add slide error:', error);
     }
   }
 
@@ -155,7 +153,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.to(presentationId).emit('block-updated', { slideId, block });
     } catch (error) {
       client.emit('error', 'Failed to update block');
-      console.error('Update block error:', error);
     }
   }
 
@@ -167,17 +164,20 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     try {
       const newBlock = await this.prisma.textBlock.create({
         data: {
-          ...block,
+          id: uuidv4(),
+          content: block.content,
+          x: block.x,
+          y: block.y,
+          width: block.width || 100,
+          height: block.height || 50,
+          styles: block.styles || '',
           slideId,
         },
       });
 
-      this.server
-        .to(presentationId)
-        .emit('block-added', { slideId, block: newBlock });
+      this.server.to(presentationId).emit('block-added', { slideId, block: newBlock });
     } catch (error) {
       client.emit('error', 'Failed to add block');
-      console.error('Add block error:', error);
     }
   }
 
@@ -191,12 +191,9 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         where: { id: blockId },
       });
 
-      this.server
-        .to(presentationId)
-        .emit('block-removed', { slideId, blockId });
+      this.server.to(presentationId).emit('block-removed', { slideId, blockId });
     } catch (error) {
       client.emit('error', 'Failed to remove block');
-      console.error('Remove block error:', error);
     }
   }
 
@@ -217,7 +214,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.server.to(presentationId).emit('slide-removed', slideId);
     } catch (error) {
       client.emit('error', 'Failed to remove slide');
-      console.error('Remove slide error:', error);
     }
   }
 
@@ -227,7 +223,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
   ) {
     try {
-      console.log(newRole)
       const updatedUser = await this.prisma.user.update({
         where: { id: userId },
         data: { role: newRole },
@@ -236,7 +231,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.server.to(presentationId).emit('user-role-changed', updatedUser);
     } catch (error) {
       client.emit('error', 'Failed to change user role');
-      console.error('Change user role error:', error);
     }
   }
 

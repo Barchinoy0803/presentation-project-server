@@ -9,13 +9,13 @@ datasource db {
 }
 
 model Presentation {
-  id        String  @id @default(uuid())
-  title     String  @default("")
-  creatorId String
-  creator   User    @relation(name: "CreatedPresentations", fields: [creatorId], references: [id])
-  creatorName String @default("")
-  users     User[]  @relation(name: "UserPresentations")
-  slides    Slide[]
+  id          String  @id @default(uuid())
+  title       String  @default("")
+  creatorId   String
+  creator     User    @relation(name: "CreatedPresentations", fields: [creatorId], references: [id])
+  creatorName String  @default("")
+  users       User[]  @relation(name: "UserPresentations")
+  slides      Slide[]
 }
 
 model User {
@@ -29,18 +29,26 @@ model User {
 model Slide {
   id             String       @id @default(uuid())
   title          String
-  presentationId String
+  order          Int
   presentation   Presentation @relation(fields: [presentationId], references: [id])
-  blocks         TextBlock[] @relation("SlideToTextBlock")
+  presentationId String
+  blocks         TextBlock[]  @relation("SlideToTextBlock")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 }
 
 model TextBlock {
-  id      String @id @default(uuid())
-  content String
-  x       Float
-  y       Float
-  slideId String
-  slide   Slide  @relation("SlideToTextBlock", fields: [slideId], references: [id], onDelete: Cascade)
+  id        String   @id @default(uuid())
+  content   String
+  x         Int
+  y         Int
+  width     Int
+  height    Int
+  styles    Json
+  slide     Slide    @relation("SlideToTextBlock", fields: [slideId], references: [id])
+  slideId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 enum Role {

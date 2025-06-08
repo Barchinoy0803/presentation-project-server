@@ -8,7 +8,6 @@ export class PresentationService {
   constructor(private prisma: PrismaService) {}
 
   async createPresentation(username: string, title: string) {
-    // Find or create user
     let user = await this.prisma.user.findUnique({
       where: { nickname: username },
     });
@@ -23,7 +22,6 @@ export class PresentationService {
       });
     }
 
-    // Create presentation with initial slide
     return this.prisma.presentation.create({
       data: {
         id: uuidv4(),
@@ -91,12 +89,10 @@ export class PresentationService {
   }
 
   async remove(id: string) {
-    // First delete all slides and their blocks
     await this.prisma.slide.deleteMany({
       where: { presentationId: id },
     });
 
-    // Then delete the presentation
     return this.prisma.presentation.delete({
       where: { id },
     });

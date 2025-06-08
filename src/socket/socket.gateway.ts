@@ -18,7 +18,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private connectedClients = new Map<string, Socket>();
   private userPresentationMap = new Map<string, string>();
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   handleConnection(client: Socket) {
     this.connectedClients.set(client.id, client);
@@ -32,13 +32,14 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     }
     this.connectedClients.delete(client.id);
-    this.userPresentationMap.delete(client.id);
+    this.userPresentationMap.delete(client.id)
   }
 
   @SubscribeMessage('join-presentation')
   async joinPresentation(
     @MessageBody() { nickname, presentationId },
     @ConnectedSocket() client: Socket,
+    
   ) {
     try {
       const presentation = await this.prisma.presentation.findUnique({
